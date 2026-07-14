@@ -11,7 +11,7 @@ pipeline {
         AWS_REGION = "eu-west-1"
         ECR_REPOSITORY = "spring-petclinic"
 
-        SONARQUBE_SERVER = "sonarqube"
+        SONARQUBE_SERVER = "SonarQube"
 
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
