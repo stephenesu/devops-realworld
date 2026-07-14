@@ -53,7 +53,7 @@ pipeline {
 
             steps {
                 dir('application/spring-petclinic') {
-                    withSonarQubeEnv('sonarqube') {
+                    withSonarQubeEnv('SonarQube') {
                         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
 
                             sh '''
