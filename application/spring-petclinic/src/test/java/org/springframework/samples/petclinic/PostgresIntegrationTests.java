@@ -45,30 +45,30 @@ import org.testcontainers.utility.DockerImageName;
 @DisabledInAotMode
 class PostgresIntegrationTests {
 
-        @ServiceConnection
-        @Container
-        static PostgreSQLContainer container = new PostgreSQLContainer(DockerImageName.parse("postgres:15.8"));
+	@ServiceConnection
+	@Container
+	static PostgreSQLContainer container = new PostgreSQLContainer(DockerImageName.parse("postgres:15.8"));
 
-        @LocalServerPort
-        int port;
+	@LocalServerPort
+	int port;
 
-        @Autowired
-        private VetRepository vets;
+	@Autowired
+	private VetRepository vets;
 
-        @Autowired
-        private RestTemplateBuilder builder;
+	@Autowired
+	private RestTemplateBuilder builder;
 
-        @Test
-        void findAll() {
-                vets.findAll();
-                vets.findAll(); // served from cache
-        }
+	@Test
+	void findAll() {
+		vets.findAll();
+		vets.findAll(); // served from cache
+	}
 
-        @Test
-        void ownerDetails() {
-                RestTemplate template = builder.baseUri("http://localhost:" + port).build();
-                ResponseEntity<String> result = template.exchange(RequestEntity.get("/owners/1").build(), String.class);
-                assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
-        }
+	@Test
+	void ownerDetails() {
+		RestTemplate template = builder.baseUri("http://localhost:" + port).build();
+		ResponseEntity<String> result = template.exchange(RequestEntity.get("/owners/1").build(), String.class);
+		assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
+	}
 
 }
