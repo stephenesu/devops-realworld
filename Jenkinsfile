@@ -2,23 +2,24 @@ pipeline {
     agent any
 
     tools {
-        maven 'Maven'
+        jdk 'jdk21'
+        maven 'maven-3.9'
     }
 
     environment {
-        APP_NAME = 'spring-petclinic'
-        APP_DIR = 'application/spring-petclinic'
-        SONARQUBE_ENV = 'SonarQube'
+        APP_NAME = "spring-petclinic"
+        AWS_REGION = "eu-west-1"
+        ECR_REPOSITORY = "spring-petclinic"
+
+        SONARQUBE_SERVER = "sonarqube"
+
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     options {
         timestamps()
         ansiColor('xterm')
-        disableConcurrentBuilds()
-        buildDiscarder(logRotator(
-            numToKeepStr: '20',
-            artifactNumToKeepStr: '10'
-        ))
+        buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
     stages {
@@ -29,49 +30,42 @@ pipeline {
             }
         }
 
-        stage('Verify Project') {
-            steps {
-                sh '''
-                    pwd
-                    ls -la
-                    ls -la ${APP_DIR}
-                '''
-            }
-        }
-
         stage('Build') {
             steps {
-                dir("${APP_DIR}") {
+                dir('application/spring-petclinic') {
                     sh 'mvn clean compile'
                 }
             }
         }
 
-        stage('Unit Tests') {
+        stage('Unit Test') {
             steps {
-                dir("${APP_DIR}") {
+                dir('application/spring-petclinic') {
                     sh 'mvn test'
                 }
             }
         }
 
-        stage('Package') {
-            steps {
-                dir("${APP_DIR}") {
-                    sh 'mvn package -DskipTests'
-                }
-            }
-        }
-
         stage('SonarQube Analysis') {
+            environment {
+                scannerHome = tool 'sonarscanner'
+            }
+
             steps {
-                dir("${APP_DIR}") {
-                    withSonarQubeEnv("${SONARQUBE_ENV}") {
-                        sh '''
-                        mvn sonar:sonar \
-                        -Dsonar.projectKey=spring-petclinic \
-                        -Dsonar.projectName=Spring-PetClinic
-                        '''
+                dir('application/spring-petclinic') {
+                    withSonarQubeEnv('sonarqube') {
+                        withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+
+                            sh '''
+                            ${scannerHome}/bin/sonar-scanner \
+                              -Dsonar.projectKey=spring-petclinic \
+                              -Dsonar.projectName=Spring-Petclinic \
+                              -Dsonar.sources=src \
+                              -Dsonar.java.binaries=target/classes \
+                              -Dsonar.host.url=$SONAR_HOST_URL \
+                              -Dsonar.login=$SONAR_TOKEN
+                            '''
+                        }
                     }
                 }
             }
@@ -79,8 +73,28 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                timeout(time: 5, unit: 'MINUTES') {
+                timeout(time: 10, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                dir('application/spring-petclinic') {
+                    sh 'mvn package -DskipTests'
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                dir('application/spring-petclinic') {
+                    sh '''
+                    docker build \
+                    -t ${APP_NAME}:${IMAGE_TAG} \
+                    .
+                    '''
                 }
             }
         }
@@ -89,17 +103,16 @@ pipeline {
 
     post {
 
-        always {
-            junit '**/target/surefire-reports/*.xml'
-            archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
-        }
-
         success {
-            echo 'Pipeline completed successfully.'
+            echo "Pipeline completed successfully."
         }
 
         failure {
-            echo 'Pipeline failed.'
+            echo "Pipeline failed."
+        }
+
+        always {
+            cleanWs()
         }
     }
 }
