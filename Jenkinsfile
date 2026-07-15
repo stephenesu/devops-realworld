@@ -4,6 +4,9 @@ pipeline {
         jdk 'jdk21'
         maven 'maven'
     }
+    triggers {
+        pollSCM("H/2 * * * *")
+    }
     environment {
         APP_NAME = "spring-petclinic"
         AWS_REGION = "eu-west-1"
