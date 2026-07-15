@@ -9,11 +9,13 @@ pipeline {
     }
     environment {
         APP_NAME = "spring-petclinic"
-        AWS_REGION = "eu-west-1"
+        AWS_REGION = "us-east-1"
+        AWS_ACCOUNT_ID = "016338413637"
         ECR_REPOSITORY = "spring-petclinic"
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         SONARQUBE_SERVER = "SonarQube"
         IMAGE_TAG = "${BUILD_NUMBER}"
-        DOCKER_IMAGE = "stephenesu/${APP_NAME}"
+        EC2_HOST = "44.211.119.130"
     }
     options {
         timestamps()
@@ -81,21 +83,35 @@ pipeline {
                 dir('application/spring-petclinic') {
                     sh '''
                     docker build \
-                    -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
-                    -t ${DOCKER_IMAGE}:latest \
+                    -t ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} \
+                    -t ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest \
                     .
                     '''
                 }
             }
         }
-        stage('Docker Push') {
+        stage('Push to ECR') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
                     sh '''
-                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                    docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
-                    docker push ${DOCKER_IMAGE}:latest
-                    docker logout
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+                    docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                    '''
+                }
+            }
+        }
+        stage('Deploy to EC2') {
+            steps {
+                sshagent(credentials: ['ec2-prod-ssh']) {
+                    sh '''
+                    ssh -o StrictHostKeyChecking=no ubuntu@${EC2_HOST} "
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY} &&
+                        docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest &&
+                        docker stop spring-petclinic || true &&
+                        docker rm spring-petclinic || true &&
+                        docker run -d --name spring-petclinic --network petclinic-network --restart unless-stopped ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                    "
                     '''
                 }
             }
